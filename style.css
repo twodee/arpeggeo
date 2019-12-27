@@ -1,3 +1,7 @@
+body {
+  user-select: none;
+}
+
 #play-button {
   position: fixed;
   right: 10px;

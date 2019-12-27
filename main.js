@@ -1,18 +1,12 @@
 let canvas;
 let context;
-let loMidi = 40;
-let vertexIndex = 0;
-let t;
-let lastTime;
 let speed = 0.01;
-let oscillator;
 let audioContext;
-let selectButton;
-let extendButton;
-let splitButton;
-let moveButton;
 let polygons = [];
-let selection = null;
+let selection = [];
+let mouseDownAt = {x: 0, y: 0};
+let isPlaying = false;
+let playButton;
 
 let margins = {
   left: 50,
@@ -88,6 +82,10 @@ class Vector2 {
   toString() {
     return `[${this.x}, ${this.y}]`;
   }
+
+  equals(that) {
+    return this.x == that.x && this.y == that.y;
+  }
 }
 
 // --------------------------------------------------------------------------- 
@@ -100,6 +98,30 @@ class Polygon {
   addVertex(vertex) {
     this.vertices.push(vertex);
   }
+
+  deleteVertex(i) {
+    this.vertices.splice(i, 1);
+  }
+
+  start() {
+    this.playbackIndex = 0;
+    this.t = 0;
+    this.lastTime = 0;
+    this.lastTime = Date.now();
+
+    let frequency = midiToFrequency(this.vertices[0].y + 48)
+
+    this.oscillator = audioContext.createOscillator();
+    this.oscillator.type = 'sine';
+    this.oscillator.connect(gainNode);
+    this.oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+    this.oscillator.start();
+  }
+
+  stop() {
+    this.oscillator.stop();
+    this.oscillator.disconnect();
+  }
 }
 
 // --------------------------------------------------------------------------- 
@@ -108,16 +130,6 @@ function midiToFrequency(midi) {
   let diff = midi - 69;
   return 440 * Math.pow(2, diff / 12.0);
 }
-
-// --------------------------------------------------------------------------- 
-
-// let quad = new Polygon([
-  // new Vector2(0, 60),
-  // new Vector2(2, 64),
-  // new Vector2(8, 67),
-  // new Vector2(10, 64),
-  // new Vector2(4, 55),
-// ]);
 
 // --------------------------------------------------------------------------- 
 
@@ -139,24 +151,17 @@ function draw() {
       context.arc(x, canvas.height - y, 5, 0, 2 * Math.PI, true);
       context.closePath();
       context.fill();
-
-      // context.beginPath();
-      // context.moveTo(x, canvas.height - y);
-      // context.lineTo(x + 10, canvas.height - y);
-      // context.stroke();
     }
   }
 
   // draw labels on y-axis
-  let nsteps = 50;
-  let stepHeight = Math.floor(canvas.height / nsteps);
 
   context.font = '8px sans-serif';
-  for (let y = 0, i = 0; y < canvas.height; y += stepHeight, ++i) {
-    context.fillText(i + loMidi, 0, y);
-  }
+  // for (let y = 0, i = 0; y < canvas.height; y += stepHeight, ++i) {
+    // context.fillText(i + loMidi, 0, y);
+  // }
 
-  for (let polygon of polygons) {
+  for (let [polygonIndex, polygon] of polygons.entries()) {
     let vertices = polygon.vertices;
 
     // Plot edges.
@@ -185,32 +190,31 @@ function draw() {
     }
 
     // Plot vertices.
-    context.fillStyle = "black";
-    for (let vertex of vertices) {
+    for (let [vertexIndex, vertex] of vertices.entries()) {
+      let isSelected = selection.some(s => s.vertexIndex == vertexIndex && s.polygonIndex == polygonIndex);
+      context.fillStyle = isSelected ? 'orange' : 'black';
       context.beginPath();
-      context.arc(vertex.x * hgap + margins.left, canvas.height - (vertex.y * vgap + margins.bottom), 3, 0, 2 * Math.PI, true);
+      context.arc(vertex.x * hgap + margins.left, canvas.height - (vertex.y * vgap + margins.bottom), isSelected ? 5 : 3, 0, 2 * Math.PI, true);
       context.closePath();
       context.fill();
     }
+
+    // Plot scrubbex.
+    if (isPlaying) {
+      context.fillStyle = 'black';
+      for (let polygon of polygons) {
+        context.beginPath();
+        let from = polygon.vertices[polygon.playbackIndex];
+        let to = polygon.vertices[(polygon.playbackIndex + 1) % polygon.vertices.length];
+        let distance = from.distance(to);
+        let timeLength = distance / speed;
+        let position = from.lerp(to, polygon.t / timeLength);
+        context.arc(position.x * hgap + margins.left, canvas.height - (position.y * vgap + margins.bottom), 6, 0, 2 * Math.PI, true);
+        context.closePath();
+        context.fill();
+      }
+    }
   }
-
-  // let columnWidth = 50;
-  // context.beginPath();
-  // for (let vertex of quad.vertices) {
-    // context.lineTo(vertex.x * columnWidth + 100, (vertex.y - loMidi) * stepHeight);
-  // }
-  // context.closePath();
-  // context.stroke();
-
-  // context.beginPath();
-  // let from = quad.vertices[vertexIndex];
-  // let to = quad.vertices[(vertexIndex + 1) % quad.vertices.length];
-  // let distance = from.distance(to);
-  // let timeLength = distance / speed;
-  // let position = from.lerp(to, t / timeLength);
-  // context.arc(position.x * columnWidth + 100, (position.y - loMidi) * stepHeight, 6, 0, 2 * Math.PI, true);
-  // context.closePath();
-  // context.fill();
 }
 
 // --------------------------------------------------------------------------- 
@@ -226,9 +230,8 @@ function resize() {
 function initializeAudio() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   audioContext = new AudioContext();
-  oscillator = audioContext.createOscillator();
-  oscillator.type = 'sine';
-  oscillator.connect(audioContext.destination);
+  gainNode = audioContext.createGain();
+  gainNode.connect(audioContext.destination);
 }
 
 // --------------------------------------------------------------------------- 
@@ -237,70 +240,69 @@ function initialize() {
   canvas = document.getElementById('canvas');
   context = canvas.getContext('2d');
   window.addEventListener('resize', resize);
-  // window.addEventListener('mousedown', mouseDown);
-  window.addEventListener('mouseup', mouseUp);
+  canvas.addEventListener('mousedown', mouseDown);
+  canvas.addEventListener('mouseup', mouseUp);
+  document.addEventListener('keydown', keyDown);
   // window.addEventListener('mousemove', mouseMove);
   resize();
 
-  let playButton = document.getElementById('play-button');
+  playButton = document.getElementById('play-button');
   playButton.addEventListener('click', animate);
-
-  // selectButton = document.getElementById('hand');
-  // extendButton = document.getElementById('extend');
-  // splitButton = document.getElementById('split');
-  // moveButton = document.getElementById('move');
-
-  // let buttons = [selectButton, extendButton, splitButton, moveButton];
-  // for (let button of buttons) {
-    // button.addEventListener('click', function() {
-      // deselectButtons();
-      // this.classList.add('selected');
-    // });
-  // }
 }
 
 // --------------------------------------------------------------------------- 
 
-function deselectButtons() {
-  selectButton.classList.remove('selected');
-  extendButton.classList.remove('selected');
-  splitButton.classList.remove('selected');
-  moveButton.classList.remove('selected');
+function keyDown(event) {
+  if (event.keyCode == 8) {
+    event.preventDefault(); 
+    selection.forEach(s => polygons[s.polygonIndex].deleteVertex(s.vertexIndex));
+    selection = [];
+    polygons = polygons.filter(p => p.vertices.length > 0);
+    draw();
+  }
 }
 
 // --------------------------------------------------------------------------- 
 
 function animate() {
-  if (!audioContext) {
-    initializeAudio();
+  if (isPlaying) {
+    clearTimeout(tick);
+    isPlaying = false;
+    playButton.innerText = 'Play';
+    for (let polygon of polygons) {
+      polygon.stop();
+    }
+  } else {
+    isPlaying = true;
+    gainNode.gain.value = 1 / polygons.length;
+    playButton.innerText = 'Stop';
+    for (let polygon of polygons) {
+      polygon.start();
+    }
+    tick();
   }
-
-  vertexIndex = 0;
-  lastTime = Date.now();
-  t = 0;
-  oscillator.frequency.setValueAtTime(midiToFrequency(quad.vertices[vertexIndex].y), audioContext.currentTime);
-  oscillator.start();
-  tick();
 }
 
 // --------------------------------------------------------------------------- 
 
 function tick() {
   let nowTime = Date.now();
-  t = nowTime - lastTime;
 
-  let from = quad.vertices[vertexIndex];
-  let to = quad.vertices[(vertexIndex + 1) % quad.vertices.length];
-  let distance = from.distance(to);
-  let timeLength = distance / speed;
+  for (let polygon of polygons) {
+    polygon.t = nowTime - polygon.lastTime;
+    let from = polygon.vertices[polygon.playbackIndex];
+    let to = polygon.vertices[(polygon.playbackIndex + 1) % polygon.vertices.length];
+    let distance = from.distance(to);
+    let timeLength = distance / speed;
 
-  if (t > timeLength) {
-    vertexIndex = (vertexIndex + 1) % quad.vertices.length;
-    t -= timeLength;
-    lastTime = nowTime;
+    if (polygon.t > timeLength) {
+      polygon.playbackIndex = (polygon.playbackIndex + 1) % polygon.vertices.length;
+      polygon.t -= timeLength;
+      polygon.lastTime = nowTime;
+    }
+
+    polygon.oscillator.frequency.setValueAtTime(midiToFrequency(polygon.vertices[polygon.playbackIndex].y + 48), audioContext.currentTime);
   }
-
-  oscillator.frequency.setValueAtTime(midiToFrequency(quad.vertices[vertexIndex].y), audioContext.currentTime);
 
   window.requestAnimationFrame(draw);
 
@@ -309,22 +311,86 @@ function tick() {
 
 // --------------------------------------------------------------------------- 
 
-function mouseUp(event) {
-  let vertex = new Vector2(
-    parseInt(Math.round((event.clientX - margins.left) / hgap)),
-    parseInt(Math.round((canvas.height - event.clientY - margins.bottom) / vgap))
-  );
-
-  if (!selection) {
-    polygons.push(new Polygon());
-    selection = {
-      polygonIndex: polygons.length - 1,
-    };
+function mouseDown(event) {
+  if (!audioContext) {
+    initializeAudio();
   }
 
-  let selectedPolygon = polygons[selection.polygonIndex];
-  selectedPolygon.addVertex(vertex);
-  selection.vertexIndex = selectedPolygon.vertices.length - 1;
+  mouseDownAt.x = event.clientX;
+  mouseDownAt.y = canvas.height - event.clientY;
+}
+
+// --------------------------------------------------------------------------- 
+
+function mouseUp(event) {
+  let mouseAt = {
+    x: event.clientX,
+    y: canvas.height - event.clientY
+  };
+
+  if (Math.abs(mouseAt.x - mouseDownAt.x) < 2 && Math.abs(mouseAt.y - mouseDownAt.y) < 2) {
+    let vertex = new Vector2(
+      parseInt(Math.round((mouseAt.x - margins.left) / hgap)),
+      parseInt(Math.round((mouseAt.y - margins.bottom) / vgap))
+    );
+
+    // See if any vertices match.
+    let matchPolygonIndex = -1;
+    let matchVertexIndex = -1;
+    for (let [polygonIndex, p] of polygons.entries()) {
+      for (let [vertexIndex, v] of p.vertices.entries()) {
+        if (vertex.equals(v)) {
+          matchPolygonIndex = polygonIndex;
+          matchVertexIndex = vertexIndex;
+        }
+      }
+    }
+
+    // The user clicked on an exist vertex.
+    if (matchPolygonIndex >= 0) {
+      // If the match was selected, deselect it. If not, select it.
+      let selectionIndex = selection.findIndex(s => s.polygonIndex == matchPolygonIndex && s.vertexIndex == matchVertexIndex);
+      if (selectionIndex >= 0) {
+        selection.splice(selectionIndex, 1);  
+      } else {
+        if (!event.shiftKey) {
+          selection = [];
+        }
+        selection.push({
+          polygonIndex: matchPolygonIndex,
+          vertexIndex: matchVertexIndex
+        });
+      }
+    }
+
+    // The user didn't click on an existing vertex.
+    else {
+      // No previous selection, so this must be the start of a new polygon.
+      if (selection.length == 0) {
+        polygons.push(new Polygon());
+        selection.push({
+          polygonIndex: polygons.length - 1,
+          vertexIndex: -1,
+        });
+      }
+
+      // If only one vertex is selected and it's the last one of its polygon,
+      // let's extend the polygon.
+      if (selection.length == 1) {
+        let selectedPolygon = polygons[selection[0].polygonIndex];
+        if (selection[0].vertexIndex == selectedPolygon.vertices.length - 1) {
+          selectedPolygon.addVertex(vertex);
+          selection[0].vertexIndex = selectedPolygon.vertices.length - 1;
+        } else {
+          selection = [];
+        }
+      } else {
+        selection = [];
+      }
+    }
+  } else {
+    selection = [];
+  }
 
   draw();
 }

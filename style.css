@@ -2,41 +2,23 @@ body {
   user-select: none;
 }
 
-#play-button {
-  position: fixed;
-  right: 10px;
-  top: 10px;
-}
-
 #toolbar {
   position: fixed;
   top: 10px;
-  left: 50%;
-  transform: translate(-50%, 0);
-  display: flex;
+  right: 10px;
 }
 
 #toolbar button {
   outline: none;
   margin: 0;
   padding: 5px;
-  width: 50px;
+  min-width: 50px;
   border: 1px solid #CCCCCC;
+  border-radius: 10px;
 }
 
-#toolbar button:not(:last-child) {
-  border-right: 0px;
-}
-
-#toolbar button:first-child {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
-  border-right: 0px;
-}
-
-#toolbar button:last-child {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
+#toolbar button:active {
+  background-color: #6495ed;
 }
 
 .selected {

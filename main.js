@@ -237,7 +237,36 @@ function initialize() {
   resize();
 
   playButton = document.getElementById('play-button');
-  playButton.addEventListener('click', animate);
+  playButton.addEventListener('click', play);
+
+  let clearButton = document.getElementById('clear-button');
+  clearButton.addEventListener('click', clear);
+
+  let saveAsButton = document.getElementById('save-as-button');
+  saveAsButton.addEventListener('click', saveAs);
+
+  loadMenu = document.getElementById('load-menu');
+  loadMenu.addEventListener('change', event => load(event.target.value));
+
+  populateLoadMenu();
+}
+
+// --------------------------------------------------------------------------- 
+
+function load(key) {
+  if (key) {
+    clear();
+    jsonToPolygons(localStorage.getItem(key));
+    draw();
+  }
+}
+
+// --------------------------------------------------------------------------- 
+
+function clear() {
+  polygons = [];
+  selection = [];
+  draw();
 }
 
 // --------------------------------------------------------------------------- 
@@ -254,22 +283,28 @@ function keyDown(event) {
 
 // --------------------------------------------------------------------------- 
 
-function animate() {
-  if (isPlaying) {
-    clearTimeout(tick);
-    isPlaying = false;
-    playButton.innerText = 'Play';
-    for (let polygon of polygons) {
-      polygon.stop();
+function play() {
+  if (!audioContext) {
+    initializeAudio();
+  }
+
+  if (polygons.length > 0) {
+    if (isPlaying) {
+      clearTimeout(tick);
+      isPlaying = false;
+      playButton.innerText = 'Play';
+      for (let polygon of polygons) {
+        polygon.stop();
+      }
+    } else {
+      isPlaying = true;
+      gainNode.gain.value = 1 / polygons.length;
+      playButton.innerText = 'Stop';
+      for (let polygon of polygons) {
+        polygon.start();
+      }
+      tick();
     }
-  } else {
-    isPlaying = true;
-    gainNode.gain.value = 1 / polygons.length;
-    playButton.innerText = 'Stop';
-    for (let polygon of polygons) {
-      polygon.start();
-    }
-    tick();
   }
 }
 
@@ -302,10 +337,6 @@ function tick() {
 // --------------------------------------------------------------------------- 
 
 function mouseDown(event) {
-  if (!audioContext) {
-    initializeAudio();
-  }
-
   let hit = classifyMouse(event, true);
   mouseDownAtPixels = hit.mousePixels;
   mouseDownAtGrid = hit.mouseGrid;
@@ -352,6 +383,51 @@ function mouseMove(event) {
       });
       draw();
     }
+  }
+}
+
+// --------------------------------------------------------------------------- 
+
+function populateLoadMenu() {
+  // Clear old options.
+  while (loadMenu.options.length > 0) {
+    loadMenu.options.remove(loadMenu.options.length - 1);
+  }
+
+  let option = document.createElement('option');
+  option.text = 'Load...';
+  option.value = null;
+  loadMenu.options.add(option, null);
+
+  // Add new ones using keys from localStorage.
+  for (let i = 0; i < localStorage.length; ++i) {
+    option = document.createElement('option');
+    option.text = localStorage.key(i);
+    option.value = localStorage.key(i);
+    loadMenu.options.add(option, null);
+  }
+}
+
+// --------------------------------------------------------------------------- 
+
+function polygonsToJson() {
+  return JSON.stringify(polygons.map(polygon => polygon.vertices.map(vertex => [vertex.x, vertex.y])));
+}
+
+// --------------------------------------------------------------------------- 
+
+function jsonToPolygons(json) {
+  let object = JSON.parse(json);
+  polygons = object.map(vertices => new Polygon(vertices.map(vertex => new Vector2(vertex[0], vertex[1]))));
+}
+
+// --------------------------------------------------------------------------- 
+
+function saveAs() {
+  let name = prompt('Save under what name?');
+  if (name && name.length > 0) {
+    localStorage.setItem(name, polygonsToJson());
+    populateLoadMenu();
   }
 }
 
@@ -420,7 +496,7 @@ function mouseUp(event) {
     }
 
     // The user didn't click on an existing vertex.
-    else {
+    else if (!isPlaying) {
       // No previous selection, so this must be the start of a new polygon.
       if (selection.length == 0) {
         polygons.push(new Polygon());
@@ -455,15 +531,17 @@ function mouseUp(event) {
 
 let canvas;
 let context;
-let speed = 0.01;
 let audioContext;
+let playButton;
+let loadMenu;
+
+let speed = 0.01;
 let polygons = [];
 let selection = [];
 let mouseDownAtPixels = new Vector2(0, 0);
 let mouseDownAtGrid = new Vector2(0, 0);
 let gridResolution = new Vector2(0, 0);
 let isPlaying = false;
-let playButton;
 let isMouseDown = false;
 let isMouseDownOnSelected = false;
 let isDragging = false;

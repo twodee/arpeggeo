@@ -1,23 +1,3 @@
-let canvas;
-let context;
-let speed = 0.01;
-let audioContext;
-let polygons = [];
-let selection = [];
-let mouseDownAt = {x: 0, y: 0};
-let isPlaying = false;
-let playButton;
-
-let margins = {
-  left: 50,
-  right: 0,
-  top: 0,
-  bottom: 20,
-};
-
-let hgap = 30;
-let vgap = 30;
-
 // --------------------------------------------------------------------------- 
 
 class Vector2 {
@@ -85,6 +65,10 @@ class Vector2 {
 
   equals(that) {
     return this.x == that.x && this.y == that.y;
+  }
+
+  clone() {
+    return new Vector2(this.x, this.y);
   }
 }
 
@@ -154,12 +138,14 @@ function draw() {
     }
   }
 
-  // draw labels on y-axis
-
-  context.font = '8px sans-serif';
-  // for (let y = 0, i = 0; y < canvas.height; y += stepHeight, ++i) {
-    // context.fillText(i + loMidi, 0, y);
-  // }
+  // Draw labels.
+  context.fillStyle = 'black';
+  context.font = '14px sans-serif';
+  context.textBaseline = 'middle';
+  // context.textAlign = 'end';
+  for (let y = margins.bottom, i = 0; y < canvas.height; y += vgap, ++i) {
+    context.fillText(labels[i % 12], 10, canvas.height - y);
+  }
 
   for (let [polygonIndex, polygon] of polygons.entries()) {
     let vertices = polygon.vertices;
@@ -206,7 +192,7 @@ function draw() {
         context.beginPath();
         let from = polygon.vertices[polygon.playbackIndex];
         let to = polygon.vertices[(polygon.playbackIndex + 1) % polygon.vertices.length];
-        let distance = from.distance(to);
+        let distance = Math.abs(to.x - from.x);
         let timeLength = distance / speed;
         let position = from.lerp(to, polygon.t / timeLength);
         context.arc(position.x * hgap + margins.left, canvas.height - (position.y * vgap + margins.bottom), 6, 0, 2 * Math.PI, true);
@@ -222,6 +208,10 @@ function draw() {
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  gridResolution = new Vector2(
+    parseInt(Math.floor((canvas.width - margins.left - margins.right) / hgap)),
+    parseInt(Math.floor((canvas.height - margins.top - margins.bottom) / vgap)),
+  );
   window.requestAnimationFrame(draw);
 }
 
@@ -239,11 +229,11 @@ function initializeAudio() {
 function initialize() {
   canvas = document.getElementById('canvas');
   context = canvas.getContext('2d');
-  window.addEventListener('resize', resize);
   canvas.addEventListener('mousedown', mouseDown);
+  canvas.addEventListener('mousemove', mouseMove);
   canvas.addEventListener('mouseup', mouseUp);
+  window.addEventListener('resize', resize);
   document.addEventListener('keydown', keyDown);
-  // window.addEventListener('mousemove', mouseMove);
   resize();
 
   playButton = document.getElementById('play-button');
@@ -292,7 +282,7 @@ function tick() {
     polygon.t = nowTime - polygon.lastTime;
     let from = polygon.vertices[polygon.playbackIndex];
     let to = polygon.vertices[(polygon.playbackIndex + 1) % polygon.vertices.length];
-    let distance = from.distance(to);
+    let distance = Math.abs(to.x - from.x);
     let timeLength = distance / speed;
 
     if (polygon.t > timeLength) {
@@ -316,40 +306,105 @@ function mouseDown(event) {
     initializeAudio();
   }
 
-  mouseDownAt.x = event.clientX;
-  mouseDownAt.y = canvas.height - event.clientY;
+  let hit = classifyMouse(event, true);
+  mouseDownAtPixels = hit.mousePixels;
+  mouseDownAtGrid = hit.mouseGrid;
+  isMouseDown = true;
+  if (hit.match) {
+    let selectionIndex = selection.findIndex(s => s.polygonIndex == hit.match.polygonIndex && s.vertexIndex == hit.match.vertexIndex);
+    isMouseDownOnSelected = selectionIndex >= 0;
+    downOnVertex = hit.match;
+  } else {
+    isMouseDownOnSelected = false;
+  }
+}
+
+// --------------------------------------------------------------------------- 
+
+function clamp(lo, hi, x) {
+  return x < lo ? lo : (x > hi ? hi : x);
+}
+
+// --------------------------------------------------------------------------- 
+
+function mouseMove(event) {
+  let hit = classifyMouse(event, false);
+  if (isMouseDown) {
+    isDragging = true;
+    if (isMouseDownOnSelected || downOnVertex) {
+      // Change selection.
+      if (!isMouseDownOnSelected) {
+        let vertex = polygons[downOnVertex.polygonIndex].vertices[downOnVertex.vertexIndex];
+        selection = [{
+          polygonIndex: downOnVertex.polygonIndex,
+          vertexIndex: downOnVertex.vertexIndex,
+          originalPosition: vertex.clone()
+        }];
+        downOnVertex = null;
+        isMouseDownOnSelected = true;
+      }
+
+      let delta = hit.mouseGrid.subtract(mouseDownAtGrid);
+      selection.forEach(s => {
+        let vertex = polygons[s.polygonIndex].vertices[s.vertexIndex];
+        vertex.x = clamp(0, gridResolution.x, s.originalPosition.x + delta.x);
+        vertex.y = clamp(0, gridResolution.y, s.originalPosition.y + delta.y);
+      });
+      draw();
+    }
+  }
+}
+
+// --------------------------------------------------------------------------- 
+
+function classifyMouse(event, intersectVertices) {
+  let hit = {
+    mousePixels: {
+      x: event.clientX,
+      y: canvas.height - event.clientY
+    },
+    type: null,
+    match: null,
+  };
+
+  hit.mouseGrid = new Vector2(
+    parseInt(Math.round((hit.mousePixels.x - margins.left) / hgap)),
+    parseInt(Math.round((hit.mousePixels.y - margins.bottom) / vgap))
+  );
+
+  // See if any vertices match.
+  if (intersectVertices) {
+    for (let [polygonIndex, polygon] of polygons.entries()) {
+      for (let [vertexIndex, vertex] of polygon.vertices.entries()) {
+        if (hit.mouseGrid.equals(vertex)) {
+          hit.match = {
+            polygonIndex: polygonIndex,
+            vertexIndex: vertexIndex,
+          };
+        }
+      }
+    }
+  }
+
+  return hit;
 }
 
 // --------------------------------------------------------------------------- 
 
 function mouseUp(event) {
-  let mouseAt = {
-    x: event.clientX,
-    y: canvas.height - event.clientY
-  };
+  isMouseDown = false;
+  let hit = classifyMouse(event, true);
 
-  if (Math.abs(mouseAt.x - mouseDownAt.x) < 2 && Math.abs(mouseAt.y - mouseDownAt.y) < 2) {
-    let vertex = new Vector2(
-      parseInt(Math.round((mouseAt.x - margins.left) / hgap)),
-      parseInt(Math.round((mouseAt.y - margins.bottom) / vgap))
-    );
-
-    // See if any vertices match.
-    let matchPolygonIndex = -1;
-    let matchVertexIndex = -1;
-    for (let [polygonIndex, p] of polygons.entries()) {
-      for (let [vertexIndex, v] of p.vertices.entries()) {
-        if (vertex.equals(v)) {
-          matchPolygonIndex = polygonIndex;
-          matchVertexIndex = vertexIndex;
-        }
-      }
-    }
-
-    // The user clicked on an exist vertex.
-    if (matchPolygonIndex >= 0) {
+  if (isDragging) {
+    selection.forEach(s => {
+      let vertex = polygons[s.polygonIndex].vertices[s.vertexIndex];
+      s.originalPosition = vertex.clone();
+    });
+  } else {
+    // The user clicked on an existing vertex.
+    if (hit.match) {
       // If the match was selected, deselect it. If not, select it.
-      let selectionIndex = selection.findIndex(s => s.polygonIndex == matchPolygonIndex && s.vertexIndex == matchVertexIndex);
+      let selectionIndex = selection.findIndex(s => s.polygonIndex == hit.match.polygonIndex && s.vertexIndex == hit.match.vertexIndex);
       if (selectionIndex >= 0) {
         selection.splice(selectionIndex, 1);  
       } else {
@@ -357,8 +412,9 @@ function mouseUp(event) {
           selection = [];
         }
         selection.push({
-          polygonIndex: matchPolygonIndex,
-          vertexIndex: matchVertexIndex
+          polygonIndex: hit.match.polygonIndex,
+          vertexIndex: hit.match.vertexIndex,
+          originalPosition: polygons[hit.match.polygonIndex].vertices[hit.match.vertexIndex].clone()
         });
       }
     }
@@ -379,8 +435,9 @@ function mouseUp(event) {
       if (selection.length == 1) {
         let selectedPolygon = polygons[selection[0].polygonIndex];
         if (selection[0].vertexIndex == selectedPolygon.vertices.length - 1) {
-          selectedPolygon.addVertex(vertex);
+          selectedPolygon.addVertex(hit.mouseGrid.clone());
           selection[0].vertexIndex = selectedPolygon.vertices.length - 1;
+          selection[0].originalPosition = hit.mouseGrid.clone();
         } else {
           selection = [];
         }
@@ -388,13 +445,40 @@ function mouseUp(event) {
         selection = [];
       }
     }
-  } else {
-    selection = [];
   }
 
+  isDragging = false;
   draw();
 }
 
 // --------------------------------------------------------------------------- 
+
+let canvas;
+let context;
+let speed = 0.01;
+let audioContext;
+let polygons = [];
+let selection = [];
+let mouseDownAtPixels = new Vector2(0, 0);
+let mouseDownAtGrid = new Vector2(0, 0);
+let gridResolution = new Vector2(0, 0);
+let isPlaying = false;
+let playButton;
+let isMouseDown = false;
+let isMouseDownOnSelected = false;
+let isDragging = false;
+let downOnVertex = null;
+
+let margins = {
+  left: 50,
+  right: 0,
+  top: 0,
+  bottom: 20,
+};
+
+let hgap = 30;
+let vgap = 30;
+
+let labels = ['C', 'C#', 'D', 'E\u266d', 'E', 'F', 'F\u266f', 'G', 'A\u266d', 'A', 'B\u266d', 'B'];
 
 window.addEventListener('load', initialize);

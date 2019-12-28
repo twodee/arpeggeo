@@ -142,10 +142,14 @@ function draw() {
   context.fillStyle = 'black';
   context.font = '14px sans-serif';
   context.textBaseline = 'middle';
-  // context.textAlign = 'end';
+  context.textAlign = 'start';
   for (let y = margins.bottom, i = 0; y < canvas.height; y += vgap, ++i) {
     context.fillText(labels[i % 12], 10, canvas.height - y);
   }
+
+  context.textBaseline = 'middle';
+  context.textAlign = 'center';
+  context.fillText('\u0394 = duration', canvas.width / 2, canvas.height - margins.bottom / 2 + 6 / 2);
 
   for (let [polygonIndex, polygon] of polygons.entries()) {
     let vertices = polygon.vertices;
@@ -201,6 +205,12 @@ function draw() {
       }
     }
   }
+
+  // context.fillStyle = 'black';
+  // context.beginPath();
+  // context.arc(canvas.width / 2, canvas.height - margins.bottom, 6, 0, 2 * Math.PI, true);
+  // context.closePath();
+  // context.fill();
 }
 
 // --------------------------------------------------------------------------- 
@@ -246,7 +256,12 @@ function initialize() {
   saveAsButton.addEventListener('click', saveAs);
 
   loadMenu = document.getElementById('load-menu');
-  loadMenu.addEventListener('change', event => load(event.target.value));
+  loadMenu.addEventListener('change', event => {
+    if (isPlaying) {
+      play();
+    }
+    load(event.target.value);
+  });
 
   populateLoadMenu();
 }
@@ -254,6 +269,10 @@ function initialize() {
 // --------------------------------------------------------------------------- 
 
 function load(key) {
+  if (isPlaying) {
+
+  }
+
   if (key) {
     clear();
     jsonToPolygons(localStorage.getItem(key));
@@ -551,7 +570,7 @@ let margins = {
   left: 50,
   right: 0,
   top: 0,
-  bottom: 20,
+  bottom: 40,
 };
 
 let hgap = 30;

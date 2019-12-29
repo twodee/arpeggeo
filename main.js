@@ -120,6 +120,13 @@ function midiToFrequency(midi) {
 function draw() {
   context.clearRect(0, 0, canvas.width, canvas.height);
 
+  for (let y = margins.bottom, i = 0; y < canvas.height - margins.top; y += vgap, i += 1) {
+    for (let x = margins.left; x < canvas.width - margins.right; x += hgap) {
+      context.fillStyle = (i % 2 == 0) ? 'rgb(240, 240, 240)' : 'rgb(250, 250, 250)';
+      context.fillRect(0, canvas.height - y - vgap / 2, canvas.width, vgap);
+    }
+  }
+
   for (let y = margins.bottom; y < canvas.height - margins.top; y += vgap) {
     for (let x = margins.left; x < canvas.width - margins.right; x += hgap) {
       context.fillStyle = "rgb(200, 200, 200)";
@@ -149,7 +156,7 @@ function draw() {
 
   context.textBaseline = 'middle';
   context.textAlign = 'center';
-  context.fillText('\u0394 = duration', canvas.width / 2, canvas.height - margins.bottom / 2 + gridNodeRadius / 2);
+  context.fillText('\u0394 = duration', canvas.width / 2, canvas.height - (margins.bottom - vgap / 2) / 2);
 
   for (let [polygonIndex, polygon] of polygons.entries()) {
     let vertices = polygon.vertices;
@@ -215,11 +222,13 @@ function draw() {
     }
   }
 
-  // context.fillStyle = 'black';
+  // context.strokeStyle = 'black';
   // context.beginPath();
+  // context.moveTo(0, canvas.height - (margins.bottom - vgap / 2) / 2);
+  // context.lineTo(canvas.width, canvas.height - (margins.bottom - vgap / 2) / 2);
   // context.arc(canvas.width / 2, canvas.height - margins.bottom, gridNodeRadius, 0, 2 * Math.PI, true);
   // context.closePath();
-  // context.fill();
+  // context.stroke();
 }
 
 // --------------------------------------------------------------------------- 
@@ -292,6 +301,9 @@ function load(key) {
 // --------------------------------------------------------------------------- 
 
 function clear() {
+  if (isPlaying) {
+    play();
+  }
   polygons = [];
   selection = [];
   draw();
@@ -455,6 +467,10 @@ function jsonToPolygons(json) {
 // --------------------------------------------------------------------------- 
 
 function saveAs() {
+  if (isPlaying) {
+    play();
+  }
+
   let name = prompt('Save under what name?');
   if (name && name.length > 0) {
     localStorage.setItem(name, polygonsToJson());

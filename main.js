@@ -314,10 +314,12 @@ function clear() {
 function keyDown(event) {
   if (event.keyCode == 8) {
     event.preventDefault(); 
-    selection.forEach(s => polygons[s.polygonIndex].deleteVertex(s.vertexIndex));
-    selection = [];
-    polygons = polygons.filter(p => p.vertices.length > 0);
-    draw();
+    if (!isPlaying) {
+      selection.forEach(s => polygons[s.polygonIndex].deleteVertex(s.vertexIndex));
+      selection = [];
+      polygons = polygons.filter(p => p.vertices.length > 0);
+      draw();
+    }
   }
 }
 

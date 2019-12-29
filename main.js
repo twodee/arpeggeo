@@ -125,14 +125,14 @@ function draw() {
       context.fillStyle = "rgb(200, 200, 200)";
 
       context.beginPath();
-      context.arc(x, canvas.height - y, 6, 0, 2 * Math.PI, true);
+      context.arc(x, canvas.height - y, gridNodeRadius, 0, 2 * Math.PI, true);
       context.closePath();
       context.fill();
 
       context.fillStyle = "rgb(230, 230, 230)";
 
       context.beginPath();
-      context.arc(x, canvas.height - y, 5, 0, 2 * Math.PI, true);
+      context.arc(x, canvas.height - y, gridNodeRadius - 1, 0, 2 * Math.PI, true);
       context.closePath();
       context.fill();
     }
@@ -149,7 +149,7 @@ function draw() {
 
   context.textBaseline = 'middle';
   context.textAlign = 'center';
-  context.fillText('\u0394 = duration', canvas.width / 2, canvas.height - margins.bottom / 2 + 6 / 2);
+  context.fillText('\u0394 = duration', canvas.width / 2, canvas.height - margins.bottom / 2 + gridNodeRadius / 2);
 
   for (let [polygonIndex, polygon] of polygons.entries()) {
     let vertices = polygon.vertices;
@@ -182,11 +182,20 @@ function draw() {
     // Plot vertices.
     for (let [vertexIndex, vertex] of vertices.entries()) {
       let isSelected = selection.some(s => s.vertexIndex == vertexIndex && s.polygonIndex == polygonIndex);
-      context.fillStyle = isSelected ? 'orange' : 'black';
-      context.beginPath();
-      context.arc(vertex.x * hgap + margins.left, canvas.height - (vertex.y * vgap + margins.bottom), isSelected ? 5 : 3, 0, 2 * Math.PI, true);
-      context.closePath();
-      context.fill();
+      context.fillStyle = isSelected ? '#EA80FF' : 'black';
+      // context.fillStyle = isSelected ? '#6495ed' : 'black';
+
+      if (vertexIndex == 0) {
+        let radius = isSelected ? gridNodeRadius : 4;
+        context.fillStyle = isSelected ? '#EA80FF' : 'crimson';
+        context.fillRect(vertex.x * hgap + margins.left - radius, canvas.height - (vertex.y * vgap + margins.bottom + radius), 2 * radius, 2 * radius);
+      } else {
+        context.fillStyle = isSelected ? '#EA80FF' : 'black';
+        context.beginPath();
+        context.arc(vertex.x * hgap + margins.left, canvas.height - (vertex.y * vgap + margins.bottom), isSelected ? gridNodeRadius : 4, 0, 2 * Math.PI, true);
+        context.closePath();
+        context.fill();
+      }
     }
 
     // Plot scrubbex.
@@ -199,7 +208,7 @@ function draw() {
         let distance = Math.abs(to.x - from.x);
         let timeLength = distance / speed;
         let position = from.lerp(to, polygon.t / timeLength);
-        context.arc(position.x * hgap + margins.left, canvas.height - (position.y * vgap + margins.bottom), 6, 0, 2 * Math.PI, true);
+        context.arc(position.x * hgap + margins.left, canvas.height - (position.y * vgap + margins.bottom), gridNodeRadius, 0, 2 * Math.PI, true);
         context.closePath();
         context.fill();
       }
@@ -208,7 +217,7 @@ function draw() {
 
   // context.fillStyle = 'black';
   // context.beginPath();
-  // context.arc(canvas.width / 2, canvas.height - margins.bottom, 6, 0, 2 * Math.PI, true);
+  // context.arc(canvas.width / 2, canvas.height - margins.bottom, gridNodeRadius, 0, 2 * Math.PI, true);
   // context.closePath();
   // context.fill();
 }
@@ -379,17 +388,20 @@ function clamp(lo, hi, x) {
 
 function mouseMove(event) {
   let hit = classifyMouse(event, false);
-  if (isMouseDown) {
+  if (isMouseDown && hit.hasMovedFromDown) {
     isDragging = true;
     if (isMouseDownOnSelected || downOnVertex) {
       // Change selection.
       if (!isMouseDownOnSelected) {
+        if (!event.shiftKey) {
+          selection = [];
+        }
         let vertex = polygons[downOnVertex.polygonIndex].vertices[downOnVertex.vertexIndex];
-        selection = [{
+        selection.push({
           polygonIndex: downOnVertex.polygonIndex,
           vertexIndex: downOnVertex.vertexIndex,
           originalPosition: vertex.clone()
-        }];
+        });
         downOnVertex = null;
         isMouseDownOnSelected = true;
       }
@@ -454,13 +466,12 @@ function saveAs() {
 
 function classifyMouse(event, intersectVertices) {
   let hit = {
-    mousePixels: {
-      x: event.clientX,
-      y: canvas.height - event.clientY
-    },
+    mousePixels: new Vector2(event.clientX, canvas.height - event.clientY),
     type: null,
     match: null,
   };
+
+  hit.hasMovedFromDown = hit.mousePixels.distance(mouseDownAtPixels) > 2;
 
   hit.mouseGrid = new Vector2(
     parseInt(Math.round((hit.mousePixels.x - margins.left) / hgap)),
@@ -565,6 +576,7 @@ let isMouseDown = false;
 let isMouseDownOnSelected = false;
 let isDragging = false;
 let downOnVertex = null;
+let gridNodeRadius = 8;
 
 let margins = {
   left: 50,
@@ -573,8 +585,8 @@ let margins = {
   bottom: 40,
 };
 
-let hgap = 30;
-let vgap = 30;
+let hgap = 25;
+let vgap = 25;
 
 let labels = ['C', 'C#', 'D', 'E\u266d', 'E', 'F', 'F\u266f', 'G', 'A\u266d', 'A', 'B\u266d', 'B'];
 

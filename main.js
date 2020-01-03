@@ -87,7 +87,7 @@ class Polygon {
     this.vertices.splice(i, 1);
   }
 
-  start() {
+  start(weight) {
     this.playbackIndex = 0;
     this.t = 0;
     this.lastTime = 0;
@@ -95,9 +95,13 @@ class Polygon {
 
     let frequency = midiToFrequency(this.vertices[0].y + 48)
 
+    this.gainNode = audioContext.createGain();
+    this.gainNode.connect(audioContext.destination);
+    this.gainNode.gain.setValueAtTime(weight, audioContext.currentTime);
+
     this.oscillator = audioContext.createOscillator();
     this.oscillator.type = 'sine';
-    this.oscillator.connect(gainNode);
+    this.oscillator.connect(this.gainNode);
     this.oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
     this.oscillator.start();
   }
@@ -248,8 +252,6 @@ function resize() {
 function initializeAudio() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   audioContext = new AudioContext();
-  gainNode = audioContext.createGain();
-  gainNode.connect(audioContext.destination);
 }
 
 // --------------------------------------------------------------------------- 
@@ -340,10 +342,9 @@ function play() {
       }
     } else {
       isPlaying = true;
-      gainNode.gain.value = 1 / polygons.length;
       playButton.innerText = 'Stop';
       for (let polygon of polygons) {
-        polygon.start();
+        polygon.start(1 / polygons.length);
       }
       tick();
     }
@@ -366,9 +367,8 @@ function tick() {
       polygon.playbackIndex = (polygon.playbackIndex + 1) % polygon.vertices.length;
       polygon.t -= timeLength;
       polygon.lastTime = nowTime;
+      polygon.oscillator.frequency.setValueAtTime(midiToFrequency(polygon.vertices[polygon.playbackIndex].y + 48), audioContext.currentTime);
     }
-
-    polygon.oscillator.frequency.setValueAtTime(midiToFrequency(polygon.vertices[polygon.playbackIndex].y + 48), audioContext.currentTime);
   }
 
   window.requestAnimationFrame(draw);
